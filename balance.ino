@@ -1,8 +1,13 @@
-#include <PID_v1.h>
+#include "PID_v1.h"
 #include "MPU6050_6Axis_MotionApps20.h"
 #include "I2Cdev.h"
 #include "Wire.h"
+#include "WiFi.h"
+#include "ESPAsyncWebSrv.h"
+#include "ArduinoJson.h"
 
+#define WEB_PORT 80
+#define PID_SAMPLE_TIME 200
 #define INTERRUPT_PIN 35
 #define MOTOR_PIN_ENA 14
 #define MOTOR_PIN_IN1 27
@@ -10,6 +15,32 @@
 #define MOTOR_PIN_IN3 25
 #define MOTOR_PIN_IN4 33
 #define MOTOR_PIN_ENB 32
+
+const char* ssid = "Carnegie";
+const char* pass = "greatchina";
+const char htmlPage[] PROGMEM = R"rawliteral(
+<html><head><script>
+function sendData(button) {
+  var xhr = new XMLHttpRequest();
+  xhr.open("POST", "/comms", true);
+  xhr.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+
+  var data = {
+    button: button
+  };
+
+  xhr.send(JSON.stringify(data));
+}
+</script></head>
+<body>
+  <h1>ESP32 Button Control</h1>
+  <button onclick="sendData(1)">Button 1</button>
+  <button onclick="sendData(2)">Button 2</button>
+</body>
+</html>
+)rawliteral";
+
+AsyncWebServer server(WEB_PORT);
 
 unsigned long timer = 0;
 
@@ -87,8 +118,49 @@ void setupMPU() {
 void setupPID() {
   pid.SetMode(AUTOMATIC);
   pid.SetOutputLimits(-255, 255);
-  pid.SetSampleTime(200);
+  pid.SetSampleTime(PID_SAMPLE_TIME);
   pid.SetControllerDirection(REVERSE);
+}
+
+void setupWiFi() {
+  Serial.print("Connecting to: ");
+  Serial.println(ssid);
+
+  WiFi.begin(ssid, pass);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("");
+  Serial.println("WiFi connected");
+  Serial.print("IP address of ESP32 module: ");
+  Serial.println(WiFi.localIP());
+
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(200, "text/html", htmlPage);
+  });
+
+  server.on("/comms", HTTP_POST, [](AsyncWebServerRequest *request){
+    DynamicJsonDocument jsonBuffer(1024);
+    deserializeJson(jsonBuffer, request->getParam("plain")->value());
+
+    int button = jsonBuffer["button"];
+
+    // Handle the button press
+    if (button == 1) {
+      Serial.println("Button 1 pressed");
+      // Add your action for Button 1 here
+    } else if (button == 2) {
+      Serial.println("Button 2 pressed");
+      // Add your action for Button 2 here
+    }
+
+    request->send(200, "application/json", "{\"message\":\"Button press handled\"}");
+  });
+
+  server.begin();
 }
 
 void setupMotors() {
@@ -105,10 +177,6 @@ void setupMotors() {
   pinMode(MOTOR_PIN_IN4, OUTPUT);
 }
 
-void setupLog() {
-  Serial.print("input,setpoint,error,output");
-}
-
 void moveMotors() {
   if (output == 0) return;
 
@@ -117,8 +185,8 @@ void moveMotors() {
   digitalWrite(MOTOR_PIN_IN3, output > 0 ? LOW  : HIGH);
   digitalWrite(MOTOR_PIN_IN4, output > 0 ? HIGH : LOW);
 
-  ledcwrite(0, abs(output));
-  ledcwrite(1, abs(output));
+  ledcWrite(0, abs(output));
+  ledcWrite(1, abs(output));
 }
 
 void updateMPU() {
@@ -130,15 +198,19 @@ void updateMPU() {
   }
 }
 
+void updateWiFi() {
+}
+
 void logPID() {
-  if (millis() - timer > 10) {
+  if (millis() - timer > PID_SAMPLE_TIME) {
+    Serial.print("input:")
     Serial.print(input);
-    Serial.print(",");
+    Serial.print(",setpoint:");
     Serial.print(setpoint);
-    Serial.print(",");
+    Serial.print(",error:");
     Serial.print(setpoint - input); // error = setpoint - input
-    Serial.print(",");
-    Serial.print(output);
+    Serial.print(",output:");
+    Serial.println(output);
   }
 }
 
@@ -149,15 +221,17 @@ void checkFallen() {
 }
 
 void setup() {
-  Serial.begin(38400);
+  Serial.begin(9600);
 
   setupMPU();
   setupPID();
-  setupLog();
   setupMotors();
+  setupWiFi();
 }
 
 void loop() {
+  updateWiFi();
+
   if (!dmpReady) return;
 
   setpoint = 0;
