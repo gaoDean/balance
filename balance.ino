@@ -144,19 +144,20 @@ void setupWiFi() {
 
   server.on("/comms", HTTP_POST, [](AsyncWebServerRequest *request){
     DynamicJsonDocument jsonBuffer(1024);
-    deserializeJson(jsonBuffer, request->getParam("plain")->value());
-
-    int button = jsonBuffer["button"];
-
-    // Handle the button press
-    if (button == 1) {
-      Serial.println("Button 1 pressed");
-      // Add your action for Button 1 here
-    } else if (button == 2) {
-      Serial.println("Button 2 pressed");
-      // Add your action for Button 2 here
-    }
-
+    /* deserializeJson(jsonBuffer, request->getParam("plain")->value()); */
+    /**/
+    /* int button = jsonBuffer["button"]; */
+    /**/
+    /* // Handle the button press */
+    /* if (button == 1) { */
+    /*   Serial.println("Button 1 pressed"); */
+    /*   // Add your action for Button 1 here */
+    /* } else if (button == 2) { */
+    /*   Serial.println("Button 2 pressed"); */
+    /*   // Add your action for Button 2 here */
+    /* } */
+    /**/
+    Serial.println("Button press handled");
     request->send(200, "application/json", "{\"message\":\"Button press handled\"}");
   });
 
@@ -203,7 +204,7 @@ void updateWiFi() {
 
 void logPID() {
   if (millis() - timer > PID_SAMPLE_TIME) {
-    Serial.print("input:")
+    Serial.print("input:");
     Serial.print(input);
     Serial.print(",setpoint:");
     Serial.print(setpoint);
