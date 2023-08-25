@@ -3,13 +3,13 @@
 #include "I2Cdev.h"
 #include "Wire.h"
 
-#define INTERRUPT_PIN 2  // use pin 2 on Arduino Uno & most boards
-#define MOTOR_PIN_ENA 10
-#define MOTOR_PIN_IN1 9
-#define MOTOR_PIN_IN2 8
-#define MOTOR_PIN_IN3 7
-#define MOTOR_PIN_IN4 6
-#define MOTOR_PIN_ENB 5
+#define INTERRUPT_PIN 35
+#define MOTOR_PIN_ENA 14
+#define MOTOR_PIN_IN1 27
+#define MOTOR_PIN_IN2 26
+#define MOTOR_PIN_IN3 25
+#define MOTOR_PIN_IN4 33
+#define MOTOR_PIN_ENB 32
 
 unsigned long timer = 0;
 
@@ -65,7 +65,10 @@ void setupMPU() {
     Serial.print(F("Enabling interrupt detection (Arduino external interrupt "));
     Serial.print(digitalPinToInterrupt(INTERRUPT_PIN));
     Serial.println(F(")..."));
-    attachInterrupt(digitalPinToInterrupt(INTERRUPT_PIN), dmpDataReady, RISING);
+
+    pinMode(INTERRUPT_PIN, INPUT_PULLDOWN);
+    attachInterrupt(INTERRUPT_PIN, dmpDataReady, RISING);
+
     mpuIntStatus = mpu.getIntStatus();
 
     Serial.println(F("DMP ready! Waiting for first interrupt..."));
@@ -89,8 +92,13 @@ void setupPID() {
 }
 
 void setupMotors() {
-  pinMode(MOTOR_PIN_ENA, OUTPUT);
-  pinMode(MOTOR_PIN_ENB, OUTPUT);
+  ledcSetup(0, 5000, 8);
+  ledcSetup(1, 5000, 8);
+  ledcAttachPin(MOTOR_PIN_ENA, 0);
+  ledcAttachPin(MOTOR_PIN_ENB, 1);
+  ledcWrite(0, 0);
+  ledcWrite(1, 0);
+
   pinMode(MOTOR_PIN_IN1, OUTPUT);
   pinMode(MOTOR_PIN_IN2, OUTPUT);
   pinMode(MOTOR_PIN_IN3, OUTPUT);
@@ -109,8 +117,8 @@ void moveMotors() {
   digitalWrite(MOTOR_PIN_IN3, output > 0 ? LOW  : HIGH);
   digitalWrite(MOTOR_PIN_IN4, output > 0 ? HIGH : LOW);
 
-  analogWrite(MOTOR_PIN_ENA, abs(output));
-  analogWrite(MOTOR_PIN_ENB, abs(output));
+  ledcwrite(0, abs(output));
+  ledcwrite(1, abs(output));
 }
 
 void updateMPU() {
