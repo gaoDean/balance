@@ -3,7 +3,8 @@
 #include "I2Cdev.h"
 #include "Wire.h"
 #include "WiFi.h"
-#include "ESPAsyncWebSrv.h"
+#include "WebServer.h"
+#include "ArduinoJson.h"
 
 #define WEB_PORT 80
 #define PID_SAMPLE_TIME 200
@@ -16,14 +17,14 @@
 #define MOTOR_PIN_IN4 33
 #define MOTOR_PIN_ENB 32
 
-IPAddress ip(192,168,4,1); // should be 192.168.4.x
-IPAddress gateway(192,168,4,1);  // should be 192.168.4.x
-IPAddress subnet(255,255,255,0);
+/* IPAddress ip(192,168,4,1); // should be 192.168.4.x */
+/* IPAddress gateway(192,168,4,1);  // should be 192.168.4.x */
+/* IPAddress subnet(255,255,255,0); */
 
-const char* ssid = "ESP32 Server";
-const char* pass = "greatchina";
-/* const char* ssid = "Carnegie"; */
+/* const char* ssid = "ESP32 Server"; */
 /* const char* pass = "greatchina"; */
+const char* ssid = "Carnegie";
+const char* pass = "greatchina";
 const char htmlPage[] PROGMEM = R"rawliteral(
 <html>
 <head>
@@ -65,8 +66,7 @@ const char htmlPage[] PROGMEM = R"rawliteral(
 </html>
 )rawliteral";
 
-/* WebServer server(WEB_PORT); */
-AsyncWebServer server(WEB_PORT);
+WebServer server(WEB_PORT);
 
 unsigned long timer = 0;
 
@@ -91,6 +91,17 @@ PID pid(&input, &output, &setpoint, pid_p, pid_i, pid_d, DIRECT);
 volatile bool mpuInterrupt = false;
 void dmpDataReady() {
     mpuInterrupt = true;
+}
+
+void handleRoot() {
+  if (server.hasArg("x") || server.hasArg("y")) {
+    float x = server.arg("x").toFloat();
+    float y = server.arg("y").toFloat();
+    setpoint = y * MAX_PITCH_SETPOINT;
+    Serial.printf("x:%f, y:%f\n", x, y);
+  }
+
+  server.send(200, "text/html", htmlPage);
 }
 
 void setupMPU() {
@@ -149,46 +160,26 @@ void setupPID() {
 }
 
 void setupWiFi() {
-  /* Serial.print("Connecting to: "); */
-  /* Serial.println(ssid); */
-  /* WiFi.begin(ssid, pass); */
+  Serial.print("Connecting to: ");
+  Serial.println(ssid);
+  WiFi.begin(ssid, pass);
+
+  while(WiFi.status() != WL_CONNECTED){
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("");
+  Serial.println("WiFi connected");
+  Serial.print("IP-Address of ESP32 module: ");
+  Serial.println(WiFi.localIP());
+
+  /* WiFi.softAPConfig(ip, gateway, subnet); */
+  /* WiFi.softAP(ssid, pass); */
   /**/
-  /* while(WiFi.status() != WL_CONNECTED){ */
-  /*   delay(500); */
-  /*   Serial.print("."); */
-  /* } */
-  /* Serial.println(""); */
-  /* Serial.println("WiFi connected"); */
-  /* Serial.print("IP-Address of ESP32 module: "); */
-  /* Serial.println(WiFi.localIP()); */
+  /* Serial.print("IP address: "); */
+  /* Serial.println(WiFi.softAPIP()); */
 
-  WiFi.softAPConfig(ip, gateway, subnet);
-  WiFi.softAP(ssid, pass);
-
-  Serial.print("IP address: ");
-  Serial.println(WiFi.softAPIP());
-
-  server.on("/", [] (AsyncWebServerRequest *request) {
-    if (request->hasParam("x") || request->hasParam("y")) {
-      float x = request->getParam("x")->value().toFloat();
-      float y = request->getParam("y")->value().toFloat();
-      setpoint = y * MAX_PITCH_SETPOINT;
-      Serial.printf("x:%f, y:%f\n", x, y);
-    }
-
-    request->send(200, "text/html", htmlPage);
-  });
-
-  /* server.on("/", [] () { */
-  /*   if (server.hasArg("x") || server.hasArg("y")) { */
-  /*     float x = server.arg("x").toFloat(); */
-  /*     float y = server.arg("y").toFloat(); */
-  /*     setpoint = y * MAX_PITCH_SETPOINT; */
-  /*     Serial.printf("x:%f, y:%f\n", x, y); */
-  /*   } */
-  /**/
-  /*   server.send(200, "text/html", htmlPage); */
-  /* }); */
+  server.on("/", handleRoot);
 
   server.begin();
 }
@@ -257,7 +248,7 @@ void setup() {
 }
 
 void loop() {
-  /* server.handleClient(); */
+  server.handleClient();
 
   if (!dmpReady) return;
 
