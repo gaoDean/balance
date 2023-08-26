@@ -3,11 +3,11 @@
 #include "I2Cdev.h"
 #include "Wire.h"
 #include "WiFi.h"
-#include "WebServer.h"
-#include "ArduinoJson.h"
+#include "ESPAsyncWebSrv.h"
 
 #define WEB_PORT 80
 #define PID_SAMPLE_TIME 200
+#define MAX_PITCH_SETPOINT 20
 #define INTERRUPT_PIN 35
 #define MOTOR_PIN_ENA 14
 #define MOTOR_PIN_IN1 27
@@ -22,31 +22,51 @@ IPAddress subnet(255,255,255,0);
 
 const char* ssid = "ESP32 Server";
 const char* pass = "greatchina";
+/* const char* ssid = "Carnegie"; */
+/* const char* pass = "greatchina"; */
 const char htmlPage[] PROGMEM = R"rawliteral(
-<html><head>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.10.1/nipplejs.min.js"></script>
-  <script>
-  let dynamic = nipplejs.create({
-        zone: document.getElementById('joystick'),
-        color: 'blue'
-    }).on('move', (evt, data) => {
-  var xhr = new XMLHttpRequest();
-  xhr.open("GET", `/?x=${data.position.x}&y=${data.position.y}`, true);
-  xhr.send();
-}).on('end', () => {
-  var xhr = new XMLHttpRequest();
-  xhr.open("GET", "/?x=0&y=0", true);
-  xhr.send();
-});
-  </script>
+<html>
+<head>
+<style>
+#joystick {
+    width: 100%;
+    height: 100vh;
+    position: relative;
+}
+</style>
 </head>
 <body>
   <div id="joystick"></div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.10.1/nipplejs.min.js"></script>
+  <script>
+  let lastUpdate = Date.now();
+  nipplejs.create({
+    zone: document.getElementById('joystick'),
+    mode: 'dynamic',
+    size: 500,
+    color: 'red',
+  }).on('move', function (evt, data) {
+    if (Date.now() - lastUpdate <= 200) {
+      return;
+    }
+    lastUpdate = Date.now();
+    console.log('move', data);
+    var xhr = new XMLHttpRequest();
+    xhr.open("GET", `/?x=${data.vector.x}&y=${data.vector.y}`, true);
+    xhr.send();
+  }).on('end', function () {
+    console.log('stop');
+    var xhr = new XMLHttpRequest();
+    xhr.open("GET", "/?x=0&y=0", true);
+    xhr.send();
+  });
+  </script>
 </body>
 </html>
 )rawliteral";
 
-WebServer server(WEB_PORT);
+/* WebServer server(WEB_PORT); */
+AsyncWebServer server(WEB_PORT);
 
 unsigned long timer = 0;
 
@@ -71,16 +91,6 @@ PID pid(&input, &output, &setpoint, pid_p, pid_i, pid_d, DIRECT);
 volatile bool mpuInterrupt = false;
 void dmpDataReady() {
     mpuInterrupt = true;
-}
-
-void handleRoot() {
-  if (server.hasArg("x") || server.hasArg("y")) {
-    float x = server.arg("x").toFloat();
-    float y = server.arg("y").toFloat();
-    Serial.printf("x:%f, y:%f\n", x, y);
-  }
-
-  server.send(200, "text/html", htmlPage);
 }
 
 void setupMPU() {
@@ -139,13 +149,46 @@ void setupPID() {
 }
 
 void setupWiFi() {
+  /* Serial.print("Connecting to: "); */
+  /* Serial.println(ssid); */
+  /* WiFi.begin(ssid, pass); */
+  /**/
+  /* while(WiFi.status() != WL_CONNECTED){ */
+  /*   delay(500); */
+  /*   Serial.print("."); */
+  /* } */
+  /* Serial.println(""); */
+  /* Serial.println("WiFi connected"); */
+  /* Serial.print("IP-Address of ESP32 module: "); */
+  /* Serial.println(WiFi.localIP()); */
+
   WiFi.softAPConfig(ip, gateway, subnet);
   WiFi.softAP(ssid, pass);
 
   Serial.print("IP address: ");
   Serial.println(WiFi.softAPIP());
 
-  server.on("/", handleRoot);
+  server.on("/", [] (AsyncWebServerRequest *request) {
+    if (request->hasParam("x") || request->hasParam("y")) {
+      float x = request->getParam("x")->value().toFloat();
+      float y = request->getParam("y")->value().toFloat();
+      setpoint = y * MAX_PITCH_SETPOINT;
+      Serial.printf("x:%f, y:%f\n", x, y);
+    }
+
+    request->send(200, "text/html", htmlPage);
+  });
+
+  /* server.on("/", [] () { */
+  /*   if (server.hasArg("x") || server.hasArg("y")) { */
+  /*     float x = server.arg("x").toFloat(); */
+  /*     float y = server.arg("y").toFloat(); */
+  /*     setpoint = y * MAX_PITCH_SETPOINT; */
+  /*     Serial.printf("x:%f, y:%f\n", x, y); */
+  /*   } */
+  /**/
+  /*   server.send(200, "text/html", htmlPage); */
+  /* }); */
 
   server.begin();
 }
@@ -185,10 +228,6 @@ void updateMPU() {
   }
 }
 
-void updateWiFi() {
-  server.handleClient();
-}
-
 void logPID() {
   if (millis() - timer > PID_SAMPLE_TIME) {
     Serial.print("input:");
@@ -218,11 +257,9 @@ void setup() {
 }
 
 void loop() {
-  updateWiFi();
+  /* server.handleClient(); */
 
   if (!dmpReady) return;
-
-  setpoint = 0;
 
   updateMPU();
   pid.Compute();
