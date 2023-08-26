@@ -15,7 +15,11 @@
 #define MOTOR_PIN_IN3 25
 #define MOTOR_PIN_IN4 33
 #define MOTOR_PIN_ENB 32
+#define PID_PITCH_P 3
+#define PID_PITCH_I 1
+#define PID_PITCH_D 2
 
+String logBuffer = "input,setpoint,output,error\n";
 const char* ssid = "Carnegie";
 const char* pass = "greatchina";
 /* const char* ssid = "CGS_WiFi"; */
@@ -29,10 +33,19 @@ const char htmlPage[] PROGMEM = R"rawliteral(
     height: 100vh;
     position: relative;
 }
+p {
+  white-space: pre-wrap;
+  font-family: monospace;
+}
 </style>
 </head>
 <body>
+  <p>PID</p>
+  <input type="number" id="p" value="PID_P" />
+  <input type="number" id="i" value="PID_I" />
+  <input type="number" id="d" value="PID_D" />
   <div id="joystick"></div>
+  <p>LOG</p>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.10.1/nipplejs.min.js"></script>
   <script>
   let lastUpdate = Date.now();
@@ -48,12 +61,12 @@ const char htmlPage[] PROGMEM = R"rawliteral(
     lastUpdate = Date.now();
     console.log('move', data);
     var xhr = new XMLHttpRequest();
-    xhr.open("GET", `/?x=${data.vector.x}&y=${data.vector.y}`, true);
+    xhr.open("GET", `/?x=${data.vector.x}&y=${data.vector.y}&p=${document.getElementById('p').value}&i=${document.getElementById('i').value}&d=${document.getElementById('d').value}`, true);
     xhr.send();
   }).on('end', function () {
     console.log('stop');
     var xhr = new XMLHttpRequest();
-    xhr.open("GET", "/?x=0&y=0", true);
+    xhr.open("GET", `/?x=0&y=0&p=${document.getElementById('p').value}&i=${document.getElementById('i').value}&d=${document.getElementById('d').value}`, true);
     xhr.send();
   });
   </script>
@@ -77,11 +90,16 @@ Quaternion q;
 VectorFloat gravity;
 float ypr_radians[3];
 
-int pid_pitch_p = 2;
-int pid_pitch_i = 5;
-int pid_pitch_d = 1;
 double setpoint, input, output;
-PID pid_pitch(&input, &output, &setpoint, pid_pitch_p, pid_pitch_i, pid_pitch_d, DIRECT);
+PID pid_pitch(
+  &input,
+  &output,
+  &setpoint,
+  PID_PITCH_P,
+  PID_PITCH_I,
+  PID_PITCH_D,
+  DIRECT
+);
 
 volatile bool mpuInterrupt = false;
 void dmpDataReady() {
@@ -89,7 +107,12 @@ void dmpDataReady() {
 }
 
 void handleRoot() {
-  if (server.hasArg("x") || server.hasArg("y")) {
+  if (server.hasArg("x")) {
+    pid_pitch.SetTunings(
+      server.arg("p").toFloat(),
+      server.arg("i").toFloat(),
+      server.arg("d").toFloat()
+    );
     float x = server.arg("x").toFloat();
     float y = server.arg("y").toFloat();
     if (abs(x) < 0.1) {
@@ -98,7 +121,14 @@ void handleRoot() {
     setpoint = y * MAX_PITCH_SETPOINT;
   }
 
-  server.send(200, "text/html", htmlPage);
+  // replace LOG in htmlPage with log
+  String htmlPageEdited = String(htmlPage);
+  htmlPageEdited.replace("LOG", logBuffer);
+  htmlPageEdited.replace("PID_D", String(PID_PITCH_D));
+  htmlPageEdited.replace("PID_I", String(PID_PITCH_I));
+  htmlPageEdited.replace("PID_P", String(PID_PITCH_P));
+
+  server.send(200, "text/html", htmlPageEdited);
 }
 
 void setupMPU() {
@@ -116,10 +146,12 @@ void setupMPU() {
   Serial.println(F("Initializing DMP..."));
   devStatus = mpu.dmpInitialize();
 
-  mpu.setXGyroOffset(220);
-  mpu.setYGyroOffset(76);
-  mpu.setZGyroOffset(-85);
-  mpu.setZAccelOffset(1788);
+  mpu.setXAccelOffset(-3722);
+  mpu.setYAccelOffset(2137);
+  mpu.setZAccelOffset(1166);
+  mpu.setXGyroOffset(44);
+  mpu.setYGyroOffset(14);
+  mpu.setZGyroOffset(7);
 
   if (devStatus == 0) {
     // mpu.CalibrateAccel(6);
@@ -170,12 +202,6 @@ void setupWiFi() {
   Serial.print("IP-Address of ESP32 module: ");
   Serial.println(WiFi.localIP());
 
-  /* WiFi.softAPConfig(ip, gateway, subnet); */
-  /* WiFi.softAP(ssid, pass); */
-  /**/
-  /* Serial.print("IP address: "); */
-  /* Serial.println(WiFi.softAPIP()); */
-
   server.on("/", handleRoot);
 
   server.begin();
@@ -219,12 +245,19 @@ void updateMPU() {
 void logPID() {
   if (millis() - logTimer > PID_SAMPLE_TIME) {
     Serial.printf(
-      "input:%.2f, setpoint:%.2f, error:%.2f, output:%.2f\n",
+      "input:%.2f, setpoint:%.2f, error:%.2f, output:%.2f, p:%.2f, i:%.2f, d:%.2f\n",
       input,
       setpoint,
       setpoint - input,
-      output
+      output,
+      pid_pitch.GetKp(),
+      pid_pitch.GetKi(),
+      pid_pitch.GetKd()
     );
+
+    // excel Paste > Paste Special
+    logBuffer += String(input) + "," + String(setpoint) + "," + String(output) + "," + String(setpoint - input) + "\n";
+
     logTimer = millis();
   }
 }
@@ -245,11 +278,11 @@ void setup() {
 }
 
 void loop() {
+  if (dmpReady) {
+    updateMPU();
+  };
+
   server.handleClient();
-
-  if (!dmpReady) return;
-
-  updateMPU();
   pid_pitch.Compute();
   logPID();
   checkFallen();
