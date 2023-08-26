@@ -23,17 +23,25 @@ IPAddress subnet(255,255,255,0);
 const char* ssid = "ESP32 Server";
 const char* pass = "greatchina";
 const char htmlPage[] PROGMEM = R"rawliteral(
-<html><head><script>
-function sendData(button) {
+<html><head>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.10.1/nipplejs.min.js"></script>
+  <script>
+  let dynamic = nipplejs.create({
+        zone: document.getElementById('joystick'),
+        color: 'blue'
+    }).on('move', (evt, data) => {
   var xhr = new XMLHttpRequest();
-  xhr.open("GET", "/?button=${button}", true);
+  xhr.open("GET", `/?x=${data.position.x}&y=${data.position.y}`, true);
   xhr.send();
-}
-</script></head>
+}).on('end', () => {
+  var xhr = new XMLHttpRequest();
+  xhr.open("GET", "/?x=0&y=0", true);
+  xhr.send();
+});
+  </script>
+</head>
 <body>
-  <h1>ESP32 Button Control</h1>
-  <button onclick="sendData(1)">Button 1</button>
-  <button onclick="sendData(2)">Button 2</button>
+  <div id="joystick"></div>
 </body>
 </html>
 )rawliteral";
@@ -66,9 +74,10 @@ void dmpDataReady() {
 }
 
 void handleRoot() {
-  if (server.hasArg("button")) {
-    String inputNumber = server.arg("button");
-    Serial.println("Received number: " + inputNumber);
+  if (server.hasArg("x") || server.hasArg("y")) {
+    float x = server.arg("x").toFloat();
+    float y = server.arg("y").toFloat();
+    Serial.printf("x:%f, y:%f\n", x, y);
   }
 
   server.send(200, "text/html", htmlPage);
