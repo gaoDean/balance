@@ -3,7 +3,7 @@
 #include "I2Cdev.h"
 #include "Wire.h"
 #include "WiFi.h"
-#include "ESPAsyncWebSrv.h"
+#include "WebServer.h"
 #include "ArduinoJson.h"
 
 #define WEB_PORT 80
@@ -16,20 +16,18 @@
 #define MOTOR_PIN_IN4 33
 #define MOTOR_PIN_ENB 32
 
-const char* ssid = "Carnegie";
+IPAddress ip(192,168,4,1); // should be 192.168.4.x
+IPAddress gateway(192,168,4,1);  // should be 192.168.4.x
+IPAddress subnet(255,255,255,0);
+
+const char* ssid = "ESP32 Server";
 const char* pass = "greatchina";
 const char htmlPage[] PROGMEM = R"rawliteral(
 <html><head><script>
 function sendData(button) {
   var xhr = new XMLHttpRequest();
-  xhr.open("POST", "/comms", true);
-  xhr.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
-
-  var data = {
-    button: button
-  };
-
-  xhr.send(JSON.stringify(data));
+  xhr.open("GET", "/?button=${button}", true);
+  xhr.send();
 }
 </script></head>
 <body>
@@ -40,7 +38,7 @@ function sendData(button) {
 </html>
 )rawliteral";
 
-AsyncWebServer server(WEB_PORT);
+WebServer server(WEB_PORT);
 
 unsigned long timer = 0;
 
@@ -65,6 +63,15 @@ PID pid(&input, &output, &setpoint, pid_p, pid_i, pid_d, DIRECT);
 volatile bool mpuInterrupt = false;
 void dmpDataReady() {
     mpuInterrupt = true;
+}
+
+void handleRoot() {
+  if (server.hasArg("button")) {
+    String inputNumber = server.arg("button");
+    Serial.println("Received number: " + inputNumber);
+  }
+
+  server.send(200, "text/html", htmlPage);
 }
 
 void setupMPU() {
@@ -123,43 +130,13 @@ void setupPID() {
 }
 
 void setupWiFi() {
-  Serial.print("Connecting to: ");
-  Serial.println(ssid);
+  WiFi.softAPConfig(ip, gateway, subnet);
+  WiFi.softAP(ssid, pass);
 
-  WiFi.begin(ssid, pass);
+  Serial.print("IP address: ");
+  Serial.println(WiFi.softAPIP());
 
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-
-  Serial.println("");
-  Serial.println("WiFi connected");
-  Serial.print("IP address of ESP32 module: ");
-  Serial.println(WiFi.localIP());
-
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send(200, "text/html", htmlPage);
-  });
-
-  server.on("/comms", HTTP_POST, [](AsyncWebServerRequest *request){
-    DynamicJsonDocument jsonBuffer(1024);
-    /* deserializeJson(jsonBuffer, request->getParam("plain")->value()); */
-    /**/
-    /* int button = jsonBuffer["button"]; */
-    /**/
-    /* // Handle the button press */
-    /* if (button == 1) { */
-    /*   Serial.println("Button 1 pressed"); */
-    /*   // Add your action for Button 1 here */
-    /* } else if (button == 2) { */
-    /*   Serial.println("Button 2 pressed"); */
-    /*   // Add your action for Button 2 here */
-    /* } */
-    /**/
-    Serial.println("Button press handled");
-    request->send(200, "application/json", "{\"message\":\"Button press handled\"}");
-  });
+  server.on("/", handleRoot);
 
   server.begin();
 }
@@ -200,6 +177,7 @@ void updateMPU() {
 }
 
 void updateWiFi() {
+  server.handleClient();
 }
 
 void logPID() {
