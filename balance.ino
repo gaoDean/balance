@@ -77,11 +77,11 @@ Quaternion q;
 VectorFloat gravity;
 float ypr_radians[3];
 
-int pid_p = 2;
-int pid_i = 5;
-int pid_d = 1;
+int pid_pitch_p = 2;
+int pid_pitch_i = 5;
+int pid_pitch_d = 1;
 double setpoint, input, output;
-PID pid(&input, &output, &setpoint, pid_p, pid_i, pid_d, DIRECT);
+PID pid_pitch(&input, &output, &setpoint, pid_pitch_p, pid_pitch_i, pid_pitch_d, DIRECT);
 
 volatile bool mpuInterrupt = false;
 void dmpDataReady() {
@@ -150,10 +150,10 @@ void setupMPU() {
 }
 
 void setupPID() {
-  pid.SetMode(AUTOMATIC);
-  pid.SetOutputLimits(-255, 255);
-  pid.SetSampleTime(PID_SAMPLE_TIME);
-  pid.SetControllerDirection(REVERSE);
+  pid_pitch.SetMode(AUTOMATIC);
+  pid_pitch.SetOutputLimits(-255, 255);
+  pid_pitch.SetSampleTime(PID_SAMPLE_TIME);
+  pid_pitch.SetControllerDirection(REVERSE);
 }
 
 void setupWiFi() {
@@ -250,7 +250,7 @@ void loop() {
   if (!dmpReady) return;
 
   updateMPU();
-  pid.Compute();
+  pid_pitch.Compute();
   logPID();
   checkFallen();
   moveMotors();
