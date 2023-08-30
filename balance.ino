@@ -15,15 +15,17 @@
 #define MOTOR_PIN_IN3 25
 #define MOTOR_PIN_IN4 33
 #define MOTOR_PIN_ENB 32
+#define WIFI_SELECT_PIN 13
+#define MOTOR_MIN_PWM 100
 #define PID_PITCH_P 3
 #define PID_PITCH_I 1
 #define PID_PITCH_D 2
 
 String logBuffer = "input,setpoint,output,error\n";
-const char* ssid = "Carnegie";
-const char* pass = "greatchina";
-/* const char* ssid = "CGS_WiFi"; */
-/* const char* pass = "cgswifi4321"; */
+const char* ssid0 = "Carnegie";
+const char* pass0 = "greatchina";
+const char* ssid1 = "CGS_WiFi";
+const char* pass1 = "cgswifi4321";
 const char htmlPage[] PROGMEM = R"rawliteral(
 <html>
 <head>
@@ -183,20 +185,30 @@ void setupMPU() {
 
 void setupPID() {
   pid_pitch.SetMode(AUTOMATIC);
-  pid_pitch.SetOutputLimits(-255, 255);
+  pid_pitch.SetOutputLimits(
+    -255 + MOTOR_MIN_PWM,
+    255 - MOTOR_MIN_PWM
+  );
   pid_pitch.SetSampleTime(PID_SAMPLE_TIME);
   pid_pitch.SetControllerDirection(REVERSE);
 }
 
 void setupWiFi() {
+  pinMode(WIFI_SELECT_PIN, INPUT_PULLUP);
   Serial.print("Connecting to: ");
-  Serial.println(ssid);
-  WiFi.begin(ssid, pass);
+  if (digitalRead(WIFI_SELECT_PIN) == LOW) {
+    Serial.println(ssid0);
+    WiFi.begin(ssid0, pass0);
+  } else {
+    Serial.println(ssid1);
+    WiFi.begin(ssid1, pass1);
+  }
 
   while(WiFi.status() != WL_CONNECTED){
     delay(500);
     Serial.print(".");
   }
+
   Serial.println("");
   Serial.println("WiFi connected");
   Serial.print("IP-Address of ESP32 module: ");
@@ -229,8 +241,8 @@ void moveMotors() {
   digitalWrite(MOTOR_PIN_IN3, output > 0 ? LOW  : HIGH);
   digitalWrite(MOTOR_PIN_IN4, output > 0 ? HIGH : LOW);
 
-  ledcWrite(0, abs(output));
-  ledcWrite(1, abs(output));
+  ledcWrite(0, abs(output) + MOTOR_MIN_PWM);
+  ledcWrite(1, abs(output) + MOTOR_MIN_PWM);
 }
 
 void updateMPU() {
