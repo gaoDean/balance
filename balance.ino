@@ -16,7 +16,7 @@
 #define MOTOR_PIN_IN4 33
 #define MOTOR_PIN_ENB 32
 #define WIFI_SELECT_PIN 13
-#define MOTOR_MIN_PWM 100
+#define MOTOR_MIN_PWM 120
 #define PID_PITCH_P 3
 #define PID_PITCH_I 1
 #define PID_PITCH_D 2
