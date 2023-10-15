@@ -37,5 +37,5 @@ void loop() {
     output = random(-255, 255);
   }
 
-  moveMotors()
+  moveMotors();
 }

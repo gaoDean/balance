@@ -9,14 +9,18 @@
 #define PID_SAMPLE_TIME 200
 #define MAX_PITCH_SETPOINT 20
 #define INTERRUPT_PIN 35
+#define BUZZER_PIN 4
 #define MOTOR_PIN_ENA 14
 #define MOTOR_PIN_IN1 27
 #define MOTOR_PIN_IN2 26
 #define MOTOR_PIN_IN3 25
 #define MOTOR_PIN_IN4 33
 #define MOTOR_PIN_ENB 32
-#define WIFI_SELECT_PIN 13
-#define MOTOR_MIN_PWM 120
+#define MOTOR_A_INVERT true
+#define MOTOR_B_INVERT false
+#define WIFI_SELECT_PIN_LOW 2
+#define WIFI_SELECT_PIN 15
+#define MOTOR_MIN_PWM 100
 #define PID_PITCH_P 3
 #define PID_PITCH_I 1
 #define PID_PITCH_D 2
@@ -183,6 +187,21 @@ void setupMPU() {
   }
 }
 
+void buzzNumberAsBinary(int num) {
+  String lastNumberBinary = String(num, BIN);
+  // convert binary to array then iterate through it
+  for (int i = 0; i < lastNumberBinary.length(); i++) {
+    if (lastNumberBinary[i] == '1') {
+      // use BUZZER pin to output a high PWM value
+      tone(BUZZER_PIN, 196, 200);
+    } else {
+      // use BUZZER pin to output a low PWM value
+      tone(BUZZER_PIN, 175, 200);
+    }
+    delay(200);
+  }
+}
+
 void setupPID() {
   pid_pitch.SetMode(AUTOMATIC);
   pid_pitch.SetOutputLimits(
@@ -194,7 +213,11 @@ void setupPID() {
 }
 
 void setupWiFi() {
+  pinMode(WIFI_SELECT_PIN_LOW, OUTPUT);
   pinMode(WIFI_SELECT_PIN, INPUT_PULLUP);
+
+  digitalWrite(WIFI_SELECT_PIN_LOW, LOW);
+
   Serial.print("Connecting to: ");
   if (digitalRead(WIFI_SELECT_PIN) == LOW) {
     Serial.println(ssid0);
@@ -217,6 +240,12 @@ void setupWiFi() {
   server.on("/", handleRoot);
 
   server.begin();
+
+  String ip = WiFi.localIP().toString();
+  int lastDot = ip.lastIndexOf(".");
+  String lastNumber = ip.substring(lastDot + 1);
+  int lastNumberInt = lastNumber.toInt();
+  buzzNumberAsBinary(lastNumberInt);
 }
 
 void setupMotors() {
@@ -234,12 +263,23 @@ void setupMotors() {
 }
 
 void moveMotors() {
-  if (output == 0) return;
+  if (output == 0) {
+    ledcWrite(0, 0);
+    ledcWrite(1, 0);
+    return;
+  }
 
-  digitalWrite(MOTOR_PIN_IN1, output > 0 ? LOW  : HIGH);
-  digitalWrite(MOTOR_PIN_IN2, output > 0 ? HIGH : LOW);
-  digitalWrite(MOTOR_PIN_IN3, output > 0 ? LOW  : HIGH);
-  digitalWrite(MOTOR_PIN_IN4, output > 0 ? HIGH : LOW);
+  if (output > 0) {
+    digitalWrite(MOTOR_PIN_IN1, MOTOR_A_INVERT ? HIGH : LOW);
+    digitalWrite(MOTOR_PIN_IN2, MOTOR_A_INVERT ? LOW : HIGH);
+    digitalWrite(MOTOR_PIN_IN3, MOTOR_B_INVERT ? HIGH : LOW);
+    digitalWrite(MOTOR_PIN_IN4, MOTOR_B_INVERT ? LOW : HIGH);
+  } else {
+    digitalWrite(MOTOR_PIN_IN1, MOTOR_A_INVERT ? LOW : HIGH);
+    digitalWrite(MOTOR_PIN_IN2, MOTOR_A_INVERT ? HIGH : LOW);
+    digitalWrite(MOTOR_PIN_IN3, MOTOR_B_INVERT ? LOW : HIGH);
+    digitalWrite(MOTOR_PIN_IN4, MOTOR_B_INVERT ? HIGH : LOW);
+  }
 
   ledcWrite(0, abs(output) + MOTOR_MIN_PWM);
   ledcWrite(1, abs(output) + MOTOR_MIN_PWM);
